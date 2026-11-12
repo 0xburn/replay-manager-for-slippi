@@ -61,6 +61,16 @@ export type LuckyBatch = {
   pollAt: number;
 };
 export type LuckySnapshot = {
+  login?: {
+    state:
+      | 'idle'
+      | 'waiting'
+      | 'connecting'
+      | 'connected'
+      | 'cancelled'
+      | 'failed';
+    message?: string;
+  };
   connected: boolean;
   enabled: boolean;
   jobs: LuckyJob[];

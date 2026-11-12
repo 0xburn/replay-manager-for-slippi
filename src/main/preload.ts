@@ -30,6 +30,8 @@ import {
 } from '../common/types';
 
 const electronHandler = {
+  luckyLogin: (): Promise<void> => ipcRenderer.invoke('luckyLogin'),
+  luckyLoginCancel: (): Promise<void> => ipcRenderer.invoke('luckyLoginCancel'),
   luckyDisconnect: (): Promise<void> => ipcRenderer.invoke('luckyDisconnect'),
   luckyAddFolder: (): Promise<void> => ipcRenderer.invoke('luckyAddFolder'),
   luckyStatus: (): Promise<import('../common/luckyStats').LuckySnapshot> =>

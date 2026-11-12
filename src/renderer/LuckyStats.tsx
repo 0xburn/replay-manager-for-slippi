@@ -115,12 +115,46 @@ export default function LuckyStats({
             {error || snapshot?.error ? (
               <Alert severity="error">{error || snapshot?.error}</Alert>
             ) : null}
+            {!snapshot?.connected && (
+              <Stack spacing={1}>
+                <Button
+                  variant="contained"
+                  disabled={busy}
+                  onClick={() =>
+                    act(() =>
+                      ['waiting', 'connecting'].includes(
+                        snapshot?.login?.state || '',
+                      )
+                        ? window.electron.luckyLoginCancel()
+                        : window.electron.luckyLogin(),
+                    )
+                  }
+                >
+                  {['waiting', 'connecting'].includes(
+                    snapshot?.login?.state || '',
+                  )
+                    ? 'Cancel login'
+                    : 'Login with Lucky Stats'}
+                </Button>
+                {snapshot?.login?.state === 'waiting' && (
+                  <Typography role="status">
+                    Complete login in your browser.
+                  </Typography>
+                )}
+                {snapshot?.login?.state === 'connecting' && (
+                  <Typography role="status">Connecting…</Typography>
+                )}
+                {snapshot?.login?.message && (
+                  <Alert severity="error">{snapshot.login.message}</Alert>
+                )}
+              </Stack>
+            )}
             <Link
               href="https://luckystats.gg/account?tab=api#upload-keys"
               target="_blank"
               rel="noreferrer"
             >
-              Create an upload key on Lucky Stats
+              Or create an upload key on Lucky Stats
             </Link>
             <Typography variant="body2">
               For Start.gg, connect your account on Lucky Stats. For Parry, use

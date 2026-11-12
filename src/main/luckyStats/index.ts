@@ -1,4 +1,4 @@
-import { app, dialog, ipcMain, safeStorage } from 'electron';
+import { app, dialog, ipcMain, safeStorage, shell } from 'electron';
 import Store from 'electron-store';
 import path from 'path';
 import { createHash } from 'crypto';
@@ -6,6 +6,7 @@ import { readdir, readFile } from 'fs/promises';
 import { contextSetId, contextTournament } from './context';
 import LuckyQueue, { SourceFile } from './queue';
 import { LuckyClient } from './client';
+import LuckyLogin from './login';
 
 let queue: LuckyQueue;
 let key = '';
@@ -48,39 +49,63 @@ export function initLuckyStats(parryKey: () => string = () => '') {
       });
     }, 1000).unref();
   })();
+  const connect = async (
+    value: string,
+    current: () => boolean = () => true,
+  ) => {
+    await initialized;
+    if (typeof value !== 'string' || !/^l7u_[0-9a-f]{64}$/.test(value.trim()))
+      throw new Error('Enter a Lucky Stats upload key.');
+    const next = value.trim();
+    const fingerprint = createHash('sha256').update(next).digest('hex');
+    if (
+      queue.state.jobs.length &&
+      fingerprint !== store.get('keyFingerprint') &&
+      next !== key
+    )
+      throw new Error(
+        'This queue belongs to its original upload key. Finish uploads using that key before changing accounts.',
+      );
+    secureStorage();
+    const connection = await new LuckyClient(() => next).api('connection');
+    if (connection.workflow !== 'per_set_until_tournament_finished')
+      throw new Error('The upload API does not support per-set uploads.');
+    if (!current()) return;
+    store.set(
+      'encryptedKey',
+      safeStorage.encryptString(next).toString('base64'),
+    );
+    store.set('keyFingerprint', fingerprint);
+    key = next;
+    await queue.enable(true);
+    error = undefined;
+  };
+  const login = new LuckyLogin({
+    openBrowser: (url) => shell.openExternal(url),
+    connect,
+  });
+  app.once('before-quit', () => login.cancel());
   const handlers: Record<string, (...args: any[]) => unknown> = {
     luckyStatus: async () => {
       await initialized;
-      return { ...queue.snapshot(), error };
+      return { ...queue.snapshot(), error, login: login.status() };
     },
     luckyConnect: async (value: string) => {
-      await initialized;
-      if (typeof value !== 'string' || !/^l7u_[0-9a-f]{64}$/.test(value.trim()))
-        throw new Error('Enter a Lucky Stats upload key.');
-      const next = value.trim();
-      const fingerprint = createHash('sha256').update(next).digest('hex');
-      if (
-        queue.state.jobs.length &&
-        fingerprint !== store.get('keyFingerprint') &&
-        next !== key
-      )
-        throw new Error(
-          'This queue belongs to its original upload key. Finish uploads using that key before changing accounts.',
-        );
-      secureStorage();
-      const connection = await new LuckyClient(() => next).api('connection');
-      if (connection.workflow !== 'per_set_until_tournament_finished')
-        throw new Error('The upload API does not support per-set uploads.');
-      store.set(
-        'encryptedKey',
-        safeStorage.encryptString(next).toString('base64'),
-      );
-      store.set('keyFingerprint', fingerprint);
-      key = next;
-      await queue.enable(true);
-      error = undefined;
+      login.cancel();
+      await connect(value);
     },
+    luckyLogin: async () => {
+      await initialized;
+      secureStorage();
+      if (queue.state.jobs.length)
+        throw new Error(
+          'Finish the existing upload queue before starting a new connection.',
+        );
+      await login.start();
+    },
+    luckyLoginCancel: async () => login.cancel(),
     luckyDisconnect: async () => {
+      login.cancel();
       await initialized;
       if (queue.busy || queue.preparing)
         throw new Error(

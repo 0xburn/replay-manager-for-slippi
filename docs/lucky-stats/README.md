@@ -63,3 +63,36 @@ Finish and reopen carry the server's `collectionVersion`. Ambiguous retries pres
 The server checks every 15 minutes and auto-finishes after 6 idle hours (configurable with `UPLOAD_AUTO_FINISH_IDLE_HOURS`). It requires an ingested tournament whose end date passed, complete positive standings and a champion in each imported Melee event, completed-match evidence, and no unresolved matches or active uploads. Missing evidence defers auto-finish. The server cannot detect files still local to an offline laptop; reopen if they arrive later.
 
 Roll out the companion Lucky Stats API change and `prisma/20261023_shared_upload_batches.sql` before using these controls. Legacy per-account batch links are preserved. The desktop fixture test covers remote manual finish, remote reopen, automatic finish, and local reopen without restarting, in addition to the transfer/replacement flow. These are simulated server transitions; production multi-account/auto-finish trials remain pending.
+
+## Login with Lucky Stats
+
+The upload window also offers **Login with Lucky Stats**. It opens the system
+browser to the existing Lucky Stats account, asks for tournament-upload consent,
+and creates an app-specific upload key automatically. There is no new account
+and no key to copy. Manual keys remain supported.
+
+The main process binds `127.0.0.1` on an ephemeral port, generates independent
+random state and an S256 PKCE challenge, then opens `/account/connect` with
+`client_id=replay-reporter`, `scope=game-data:upload game-data:status`,
+`response_type=code`, and the exact `/lucky-stats/callback` loopback address.
+It validates the callback Host, path, state and single code, exchanges the code
+once at `POST /api/integrations/desktop/token`, checks the returned scopes and
+validates `GET /api/integrations/v1/connection` before storing the credential.
+The renderer receives login status only. Tokens, codes and verifiers are never
+returned to it. Cancellation/timeout prevents a late exchange from installing a
+credential. Login does not ask for the user's website password in Electron.
+
+The generated key is held in Electron `safeStorage`; plaintext Linux fallback is
+rejected. Connecting enables the existing automatic per-set uploads. Disconnect
+forgets the local key; revoke it in Lucky Stats Account → API keys to invalidate
+it server-side. Zekku uses a separate key with personal-upload scopes.
+
+The server's desktop token endpoint must be exempted from interactive bot
+challenges, with PKCE and code validation still enforced. Test from the native
+client without an automation firewall bypass. The Lucky Stats backend must
+recognize the Replay Reporter client before shipping this button.
+
+A queue remains tied to its original key. Browser login is unavailable while an
+existing queue has jobs; this prevents silently switching its uploads to a
+different account. Login cancellation and failed replacement leave the current
+credential unchanged.
